@@ -2,7 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt
+# added dot after the txt file as destination  
+COPY requirements.txt .
 
 # we looked this up and there is no need to cache the packages, redundant data
 RUN pip install --no-cache-dir -r requirements.txt
