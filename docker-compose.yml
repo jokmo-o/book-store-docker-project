@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:15
+    container_name: bookshop-db
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bookshop-net
+
+  backend:
+    build: .
+    container_name: bookshop-backend
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    restart: on-failure
+    networks:
+      - bookshop-net
+      
+volumes:
+  postgres_data:
+
+networks:
+  bookshop-net:
+    driver: bridge
