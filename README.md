@@ -69,7 +69,7 @@ The repo runs three long-lived branches. Each is wired to its own workflow under
 
 **`dev` — artifact-first.** Every push triggers `dev.yml`. The workflow packages the application source, collected static files, and frozen dependencies into a single tarball (`app-<sha>.tar.gz`), commits it to `artifacts/` on the dev branch as an append-only audit trail, then builds the Docker image *from that committed artifact* — the Dockerfile `COPY`s the tarball into the image and extracts it. It does not reinstall from source. The image is then deployed to EC2 under the `bookshop-dev` compose project.
 
-**`test` — image-first.** Every push to `test` (typically a merge from `dev`) triggers `test.yml`. The workflow rebuilds a fresh artifact from source — it does **not** reuse the artifact committed by the dev pipeline — builds the Docker image, pushes it to AWS ECR with the run number as the tag, and deploys to EC2 under `bookshop-test` by pulling the image it just pushed.
+**`test` — image-first.** Every push to `test` (typically a merge from `dev`) triggers `test.yml`. The workflow rebuilds a fresh artifact from source — it does **not** reuse the artifact committed by the dev pipeline — builds the Docker image, pushes it to AWS ECR with a unique tag per build (e.g., the workflow run number), and deploys to EC2 under `bookshop-test` by pulling the image it just pushed.
 
 **`prod` — promotion only.** Every push or merge to `prod` triggers `prod.yml`. The workflow reads the `IMAGE_VERSION` repository variable, pulls the image tagged with that version from ECR, and deploys it to EC2 under `bookshop-prod`. There is no `docker build` anywhere in this workflow — promoting a new version to production means updating `vars.IMAGE_VERSION` in repo settings, not changing code.
 
@@ -104,7 +104,7 @@ services:
     image: ${IMAGE_REPO}:${IMAGE_TAG}
 ```
 
-At deploy time each workflow generates a `.env` file containing the correct `IMAGE_REPO` and `IMAGE_TAG` values for that branch, then `scp`s the `.env` next to the compose file on EC2. Docker Compose reads `.env` automatically and expands the variables.
+At deploy time each workflow generates a `.env` file containing the correct `IMAGE_REPO`, `IMAGE_TAG`, and `HOST_PORT` values for that branch, then `scp`s the `.env` next to the compose file on EC2. Docker Compose reads `.env` automatically and expands the variables.
 
 We chose env-var substitution over the alternatives (sed-replace, committed templates, commit-back-to-repo) because docker-compose supports it natively, it requires no extra tooling on the runner or the EC2 host, it avoids polluting git history with deploy-time commits, and it keeps the single compose file as the canonical source — there are no diverging per-branch copies to maintain.
 
@@ -118,7 +118,7 @@ Configured in **Settings → Secrets and variables → Actions**.
 - `EC2_HOST` — public DNS of the EC2 instance.
 - `ECR_REPOSITORY` — name of the ECR repository for our image.
 - `AWS_REGION` — AWS region for ECR and EC2 access (`eu-central-1`).
-- `EC2_USER` — SSH login user on the EC2 host (`ubuntu` on our Amazon Linux/Ubuntu AMI).
+- `EC2_USER` — SSH login user on the EC2 host (`ubuntu` on our Ubuntu 24.04 LTS AMI).
 - `ECR_REGISTRY` — full ECR registry hostname (`<account-id>.dkr.ecr.<region>.amazonaws.com`), used as the image registry prefix in workflows.
 
 **Secrets** (sensitive, masked in logs):
