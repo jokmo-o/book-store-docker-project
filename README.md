@@ -117,6 +117,9 @@ Configured in **Settings → Secrets and variables → Actions**.
 - `IMAGE_VERSION` — the image tag currently deployed in production. The single source of truth for prod.
 - `EC2_HOST` — public DNS of the EC2 instance.
 - `ECR_REPOSITORY` — name of the ECR repository for our image.
+- `AWS_REGION` — AWS region for ECR and EC2 access (`eu-central-1`).
+- `EC2_USER` — SSH login user on the EC2 host (`ubuntu` on our Amazon Linux/Ubuntu AMI).
+- `ECR_REGISTRY` — full ECR registry hostname (`<account-id>.dkr.ecr.<region>.amazonaws.com`), used as the image registry prefix in workflows.
 
 **Secrets** (sensitive, masked in logs):
 
