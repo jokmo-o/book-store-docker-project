@@ -1,0 +1,114 @@
+name: Dev — Artifact-first
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 1. Build artifact: collected static + source + deps, tarball it
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - name: Install deps and collectstatic
+        run: |
+          pip install -r requirements.txt
+          export DJANGO_SETTINGS_MODULE=book_shop.settings
+          export SECRET_KEY=temp-build-key
+          export DEBUG=False
+          export ALLOWED_HOSTS=localhost
+          export POSTGRES_DB=x
+          export POSTGRES_USER=x
+          export POSTGRES_PASSWORD=x
+          python manage.py collectstatic --noinput
+
+      - name: Create artifact tarball
+        run: |
+          ARTIFACT_NAME=app-${{ github.sha }}.tar.gz
+          tar --exclude='.git' --exclude='.github' --exclude='artifacts' \
+              --exclude='__pycache__' -czf $ARTIFACT_NAME .
+          mkdir -p artifacts
+          mv $ARTIFACT_NAME artifacts/
+          echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
+
+      # 2. Commit artifact back to dev branch (audit trail)
+      - name: Commit artifact to repo
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: dev artifact ${{ github.sha }}"
+          file_pattern: artifacts/*.tar.gz
+
+      # 3. Build Docker image FROM the artifact
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build image from artifact
+        run: |
+          IMAGE_TAG=dev-${{ github.sha }}
+          docker build \
+            --build-arg ARTIFACT_NAME=${{ env.ARTIFACT_NAME }} \
+            -t ${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:$IMAGE_TAG .
+          docker push ${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:$IMAGE_TAG
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+      # 4. Deploy to EC2
+      - name: Copy compose to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: docker-compose.yml,nginx.conf
+          target: /opt/bookshop/dev/
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,IMAGE_TAG,IMAGE_REPO,HOST_PORT,POSTGRES_PASSWORD,SECRET_KEY
+          script: |
+            cd /opt/bookshop/dev
+            cat > .env <<EOF
+            IMAGE_REPO=${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}
+            IMAGE_TAG=$IMAGE_TAG
+            HOST_PORT=8080
+            POSTGRES_DB=bookshop
+            POSTGRES_USER=bookshop
+            POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+            POSTGRES_HOST=db
+            POSTGRES_PORT=5432
+            SECRET_KEY=$SECRET_KEY
+            DEBUG=False
+            ALLOWED_HOSTS=*
+            EOF
+            aws ecr get-login-password --region $AWS_REGION | docker login -u AWS --password-stdin ${{ vars.ECR_REGISTRY }}
+            docker compose -p bookshop-dev pull
+            docker compose -p bookshop-dev up -d
+            docker compose -p bookshop-dev exec -T backend python manage.py migrate --noinput || true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          IMAGE_TAG: dev-${{ github.sha }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
