@@ -24,15 +24,15 @@ jobs:
       - name: Install deps and collectstatic
         run: |
           pip install -r requirements.txt
+          mkdir -p staticfiles
           export DJANGO_SETTINGS_MODULE=book_shop.settings
           export SECRET_KEY=temp-build-key
           export DEBUG=False
           export ALLOWED_HOSTS=localhost
-          export POSTGRES_DB=x
-          export POSTGRES_USER=x
-          export POSTGRES_PASSWORD=x
+          export POSTGRES_DB=x POSTGRES_USER=x POSTGRES_PASSWORD=x
+          export STATIC_ROOT=$GITHUB_WORKSPACE/staticfiles
           python manage.py collectstatic --noinput
-
+          
       - name: Create artifact tarball
         run: |
           ARTIFACT_NAME=app-${{ github.sha }}.tar.gz
