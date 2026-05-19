@@ -52,11 +52,6 @@ jobs:
 
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
-          mkdir -p artifacts
-          cp "$ARTIFACT_NAME" "artifacts/$ARTIFACT_NAME"
-
-          echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
-
       # 2. Commit artifact back to dev branch (audit trail)
       - name: Commit artifact to repo
         uses: stefanzweifel/git-auto-commit-action@v5
