@@ -35,11 +35,15 @@ jobs:
           
       - name: Create artifact tarball
         run: |
-          ARTIFACT_NAME=app-${{ github.sha }}.tar.gz
-          tar --exclude='.git' --exclude='.github' --exclude='artifacts' \
-              --exclude='__pycache__' -czf $ARTIFACT_NAME .
           mkdir -p artifacts
-          mv $ARTIFACT_NAME artifacts/
+          ARTIFACT_NAME=app-${{ github.sha }}.tar.gz
+          tar --exclude='.git' \
+              --exclude='.github' \
+              --exclude='artifacts' \
+              --exclude='__pycache__' \
+              --exclude='staticfiles' \
+              -czf artifacts/$ARTIFACT_NAME .
+          echo "ARTIFACT_NAME=artifacts/$ARTIFACT_NAME" >> $GITHUB_ENV
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
       # 2. Commit artifact back to dev branch (audit trail)
