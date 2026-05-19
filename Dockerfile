@@ -1,16 +1,16 @@
 FROM python:3.11-slim
 
+ARG ARTIFACT_NAME
+RUN test -n "$ARTIFACT_NAME" || (echo "ERROR: --build-arg ARTIFACT_NAME is required" && exit 1)
+
 WORKDIR /app
 
-# added dot after the txt file as destination  
-COPY requirements.txt .
+COPY ${ARTIFACT_NAME} /tmp/app.tar.gz
 
-# we looked this up and there is no need to cache the packages, redundant data
+RUN tar -xzf /tmp/app.tar.gz -C /app && rm /tmp/app.tar.gz
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
-
-RUN python manage.py collectstatic --noinput
 
 
 RUN useradd app && chown -R app:app /app
