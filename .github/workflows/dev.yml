@@ -36,14 +36,21 @@ jobs:
       - name: Create artifact tarball
         run: |
           ARTIFACT_NAME=app-${{ github.sha }}.tar.gz
+          TMP_ARTIFACT=/tmp/$ARTIFACT_NAME
 
-          tar --exclude="$ARTIFACT_NAME" \
-              --exclude='.git' \
+          tar --exclude='.git' \
               --exclude='.github' \
               --exclude='artifacts' \
               --exclude='__pycache__' \
               --exclude='staticfiles' \
-              -czf "$ARTIFACT_NAME" .
+              -czf "$TMP_ARTIFACT" .
+
+          cp "$TMP_ARTIFACT" "$ARTIFACT_NAME"
+
+          mkdir -p artifacts
+          cp "$TMP_ARTIFACT" "artifacts/$ARTIFACT_NAME"
+
+          echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
           mkdir -p artifacts
           cp "$ARTIFACT_NAME" "artifacts/$ARTIFACT_NAME"
