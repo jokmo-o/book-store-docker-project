@@ -1,0 +1,55 @@
+name: Prod — Promotion-only
+
+on:
+  push:
+    branches: [prod]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # NO docker build anywhere — promotion only
+      - name: Copy compose to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: docker-compose.yml,nginx.conf
+          target: /opt/bookshop/prod/
+
+      - name: Pull tagged image and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,IMAGE_TAG,POSTGRES_PASSWORD,SECRET_KEY
+          script: |
+            cd /opt/bookshop/prod
+            cat > .env <<EOF
+            IMAGE_REPO=${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}
+            IMAGE_TAG=$IMAGE_TAG
+            HOST_PORT=80
+            POSTGRES_DB=bookshop
+            POSTGRES_USER=bookshop
+            POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+            POSTGRES_HOST=db
+            POSTGRES_PORT=5432
+            SECRET_KEY=$SECRET_KEY
+            DEBUG=False
+            ALLOWED_HOSTS=*
+            EOF
+            aws ecr get-login-password --region $AWS_REGION | docker login -u AWS --password-stdin ${{ vars.ECR_REGISTRY }}
+            docker compose -p bookshop-prod pull
+            docker compose -p bookshop-prod up -d
+            docker compose -p bookshop-prod exec -T backend python manage.py migrate --noinput || true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          IMAGE_TAG: ${{ vars.IMAGE_VERSION }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
